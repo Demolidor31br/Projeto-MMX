@@ -1,0 +1,19 @@
+# Ignorar arquivos comprimidos pesados
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# Ignorar arquivos CAD pesados que excedem o limite de 100MB do GitHub
+*.stp
+*.step
+*.f3d
+
+# Ignorar arquivos de sistema
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Ignorar pastas temporárias ou de cache
+.vscode/
+.idea/
