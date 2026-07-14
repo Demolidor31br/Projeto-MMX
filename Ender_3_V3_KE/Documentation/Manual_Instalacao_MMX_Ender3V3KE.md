@@ -72,7 +72,9 @@ A KE de fábrica roda um sistema bloqueado (Creality OS). O primeiro passo real 
 1. Ligue a KE e garanta que ela está na rede Wi-Fi.
 2. Anote o endereço IP (ex: `192.168.1.15`).
 3. Vá em **Configurações (Settings) > Rede (Network)**, role a tela e selecione **Root**.
-4. Aceite os termos (demora cerca de 30 segundos). A senha de acesso root padrão é `creality`.
+4. Aceite os termos (demora cerca de 30 segundos).
+    > [!NOTE]
+    > **Senha de Root:** A senha padrão varia conforme a versão do firmware da KE. Tente `creality` (tudo minúsculo). Se não funcionar, tente `Creality2023` (C maiúsculo, com o ano). A senha correta também aparece na tela da impressora ao habilitar o root.
 
 ### Passo 3.2: Acesso SSH e Instalação do Klipper Limpo
 1. No seu PC Windows, abra o PowerShell ou o PuTTY.
@@ -80,7 +82,7 @@ A KE de fábrica roda um sistema bloqueado (Creality OS). O primeiro passo real 
    ```bash
    ssh root@<IP_DA_IMPRESSORA>
    ```
-3. A senha é `creality`.
+3. Use a senha exibida na tela da impressora (geralmente `creality` ou `Creality2023`).
 4. Instale o Script do Guilouz:
    ```bash
    git clone https://github.com/Guilouz/Creality-Helper-Script.git /usr/data/helper-script
@@ -140,17 +142,24 @@ Pelo SSH da impressora, execute:
 cd ~
 git clone https://github.com/moggieuk/Happy-Hare.git
 cd Happy-Hare
-./install.sh
+./install.sh -i
 ```
 
 No instalador interativo:
-*   **Escolha o Tipo de MMU:** `Ercf` (O MMX usa a mesma lógica de controle base).
+*   **Escolha o Tipo de MMU:** Procure por **`MMX`** na lista. Se a sua versão do Happy Hare não listar o MMX explicitamente, selecione **`Ercf`** como fallback (a lógica de controle é compatível).
 *   **Nome do MCU:** `mmu`
 *   **Tipo da Placa Controladora:** Escolha a opção **`BTT EBB 42 CANbus v1.2 (for MMX or Pico)`**. 
     > [!NOTE]
     > Mesmo que estejamos conectando a placa via USB físico direto, esta opção é necessária para carregar automaticamente a biblioteca de mapeamento de pinos correta da EBB42 para o MMX.
 
-O sistema instalará as dependências e criará os arquivos `mmu.cfg` e `mmu_hardware.cfg`.
+O sistema instalará as dependências e criará os arquivos de configuração na pasta `mmu/`.
+
+### Passo 5.1: Incluir o Happy Hare no Klipper
+Após a instalação, abra o arquivo `printer.cfg` pela interface do Mainsail (ou via SSH) e adicione a seguinte linha **no final do arquivo**:
+```ini
+[include mmu/base/*.cfg]
+```
+Salve o arquivo e reinicie o firmware com `FIRMWARE_RESTART`. Sem essa linha, o Klipper não reconhecerá o sistema MMU.
 
 ---
 
@@ -163,7 +172,31 @@ Como a Ender 3 V3 KE é uma impressora *Direct Drive* (extrusora montada no cabe
 
 ---
 
-## 🔌 7. Diagrama de Cabeamento BTT EBB42 <-> MMX
+## 🔋 7. Alimentação de Energia (24V para o MMX)
+
+A placa EBB42 e o motor de tração do MMX precisam de **24V DC** para funcionar. O servo motor precisa de **5V ou 6V** (fornecidos pelo módulo step-down). Existem duas formas de obter essa alimentação:
+
+### Opção A: Usar a fonte interna da Ender 3 V3 KE (Recomendado)
+A fonte original da impressora já é de 24V e possui corrente de sobra para alimentar o MMX (consumo adicional de ~1A a 2A).
+1. Desligue a impressora da tomada.
+2. Abra a tampa plástica inferior da base da KE para acessar a fonte de alimentação.
+3. Identifique os bornes de saída (`V+` e `V-`/`GND`).
+4. Insira um par de fios novos (cabo de 1.0mm² ou 1.5mm², ~1.5m de comprimento) nos mesmos bornes de parafuso (positivo no `V+`, negativo no `V-`), junto com os fios que já estão lá. Aperte bem.
+5. Passe esse cabo para fora da carcaça e leve-o até a base do MMX.
+
+### Opção B: Fonte externa dedicada
+Se preferir não abrir a carcaça da impressora:
+*   Use uma fonte de **24V DC com pelo menos 2A a 3A** (tipo carregador de notebook ou fonte colmeia pequena).
+*   Conecte os fios de saída diretamente nos bornes de energia da EBB42 e no step-down.
+
+### Esquema de Ligação
+1. **EBB42:** Conecte `V+` (24V) e `V-` (GND) nos bornes de parafuso de energia da placa. Isso alimenta a placa e o motor de passo (Nema 14) automaticamente.
+2. **Step-Down:** Conecte `IN+` e `IN-` em paralelo com a entrada de 24V da EBB42. Ajuste a saída para **5.0V ou 6.0V** com um multímetro antes de conectar o servo.
+3. **Servo:** Conecte o fio vermelho (V+) no `OUT+` do step-down, o fio marrom/preto (GND) no `OUT-`, e o fio de sinal (amarelo/laranja) no pino **PB9** da porta Probe da EBB42. Unifique o GND do step-down com o GND da porta Probe para referência de sinal estável.
+
+---
+
+## 🔌 8. Diagrama de Cabeamento BTT EBB42 <-> MMX
 
 As conexões elétricas nos pinos da EBB42 v1.2.1 seguirão o mapeamento abaixo:
 
@@ -203,6 +236,8 @@ graph LR
     *   `uart_pin: mmu:PA15` (driver TMC2209 integrado)
 *   **Servo Motor (Eixo de Cames/Camshaft):** Fio de sinal conectado ao pino **`mmu:PB9`** (pino de controle da porta Probe/BLTouch).
     *   *Lembrete:* Alimente o positivo e negativo do servo através do step-down regulado a 5V/6V, compartilhando o terra (GND) com a placa.
+    > [!WARNING]
+    > **Atenção sobre PB9 e CAN Bus:** Os pinos PB8 e PB9 do chip STM32G0B1 são os pinos físicos do barramento CAN (CAN_TX/CAN_RX). Eles **só ficam livres como GPIO** quando o firmware é compilado para comunicação **USB (on PA11/PA12)**, que é o nosso caso. Se no futuro vocês migrarem para comunicação CAN Bus, o servo precisará ser realocado para outro pino livre.
 *   **Sensores Fim de Curso de Entrada (Gates 0 a 3):**
     *   **Gate 0 (Canal 0):** `mmu:PB7`
     *   **Gate 1 (Canal 1):** `mmu:PB5`
@@ -212,7 +247,7 @@ graph LR
 
 ---
 
-## ⚙️ 8. Ajuste de Configurações das Macros no Klipper
+## ⚙️ 9. Ajuste de Configurações das Macros no Klipper
 
 No arquivo `mmu_parameters.cfg` gerado pelo Happy Hare, configure as distâncias físicas e controle da ponta do filamento (*Tip Shaping*):
 
@@ -256,7 +291,7 @@ gate_sensor_pins: mmu:PB7, mmu:PB5, mmu:PB6, mmu:PB8
 
 ---
 
-## 🏁 9. Calibração e Fluxo Final
+## 🏁 10. Calibração e Fluxo Final
 
 A ordem oficial de calibração ao energizar o sistema é:
 
